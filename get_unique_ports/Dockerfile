@@ -12,6 +12,7 @@ RUN pip3 install --user pandas
 RUN pip3 install --user numpy
 RUN pip3 install --user boto3
 RUN pip3 install --user argparse
+RUN pip3 install --user datetime
 
 
 # build first slim stage
@@ -28,4 +29,4 @@ COPY ./src .
 ENV PATH=/root/.local:$PATH
 
 #identify name etc running
-ENTRYPOINT [ "python", "./create_portfolio_tbl.py" ]
+ENTRYPOINT [ "python", "./main.py" ]

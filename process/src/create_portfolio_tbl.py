@@ -1,11 +1,18 @@
-
-from tqdm import tqdm
 import pandas as pd
 import boto3
 import os
 import io
+import argparse
+def create_argument_parser():
+    """
+    Function to add command line arguments at run time
+    """
+    parser  = argparse.ArgumentParser(description = 'Script to test out pipeline')
+    parser.add_argument('--run-type', nargs = '?', required = True, help = 'Command to run task or test')
+    return parser
 
-def aws_access()
+
+def aws_access():
     #amazon access keys from local env
     AWS_ACCESS_KEY_ID = os.getenv("aws_access")[1:-1]
     AWS_SECRET_ACCESS_KEY = os.getenv("aws_key")[1:-1]
@@ -28,8 +35,9 @@ def getIndexes(dfObj, value):
 def get_department_rows(df):
     dept_loc = {}
     for i,dept in enumerate(df['Portfolio'].to_list()):
+
         #get the row number associated with the start a department roles
-        sessions = list(getIndexes(d, dept))
+        sessions = list(getIndexes(df, dept))
         row = sessions[0][0]
         # add dictionary item of row start for each session
         dept_loc[dept] = row
@@ -115,7 +123,7 @@ def create_portfolio_tbl(Portfolios,parls):
         Portfolios = Portfolios.append(portfolios)
 
     Portfolios.drop_duplicates()
-    return Protfolios
+    return Portfolios
 
 def get_portfolio_roles(data):
 
@@ -163,10 +171,10 @@ if __name__ == "__main__":
     if args.run_type == 'proccess':
         s3 = aws_access()
         file_obj = s3.Bucket('polemics').Object("raw/ParlinfoFederalAreaOfResponsibilitiy.xlsx").get()
-        df = pd.read_excel(io.BytesIO(file_obj['Body'].read()),'sheet')
+        df = pd.read_excel(io.BytesIO(file_obj['Body'].read()),'Sheet')
 
         file_obj = s3.Bucket('polemics').Object("references/elections.xlsx").get()
-        elections = pd.read_excel(io.BytesIO(file_obj['Body'].read()),'sheet')
+        elections = pd.read_excel(io.BytesIO(file_obj['Body'].read()),'elections')
 
         #Create dictionaruy pf row # for start for parliaments rows
         parliament_rows = get_parliament_rows(elections,df)
