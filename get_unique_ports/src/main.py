@@ -156,91 +156,6 @@ def get_dept_links(data):
             Port_info = Port_info.append(port_info)
     return Port_info
 
-def get_role_stats(data,dept_data):
-    """
-    Function to return dataframe of portfolio role stats
-    Accepts
-        dept_data: a table of unique portofolio department links with start and end date
-        data: a table of all role sittings with associated portfolios and department
-    """
-    active_pct, open_pct = [], []
-    dept_data = dept_data.dropna(subset=['start']) #remove all rows with nan start dates
-
-    #look at all sittings associated to each unique department-portoflio link (each row in dept_data)
-    for row in range(len(dept_data)-1):
-
-        #sample of all roles with given portfolio and department combo
-        sample = data[ ( data['Portfolio'] == dept_data.iloc[row,1] ) & ( data['Dept'] == dept_data.iloc[row,2]) ]
-
-        #get the portfolio start and end date and days between
-        p_start = dept_data.iloc[row,3].date()
-        p_end = dept_data.iloc[row,4].date()
-
-        #get number of days between start and end date of portoflio recorded roles
-        try:
-            delta = p_start - p_end
-            p_duration = -int(delta.days)
-        except:
-            #if the protfolio is active consider end date as today
-            today = date.today()
-
-            delta = p_start - today
-            p_duration = -int(delta.days)
-
-        #check first day portfolio was active
-        day = p_start #re-define as it will change
-        days, active = [],[]
-
-        #create list of active days between portofolio start and end
-        try:
-            #look at each day between start and end date
-            for ii in range(p_duration):
-                days.append(day.strftime('%m/%d/%Y'))
-                active_flag = 0
-                #Look at each role to see if active on given day
-                #look at each role with given portfolio and dept combo
-                for s in range(len(sample)):
-                    #get a role's start and end date
-                    r_start = sample.iloc[s,5]#s = the row number of the subset
-                    r_end = sample.iloc[s,6]
-
-                    #the considered day is active if betwen the role start and end date
-                    if r_start <= day <= r_end:
-                        active.append(1)
-                        active_flag = 1
-                        break
-
-                    else:
-                        #check next if another role sittings if active day considered
-                        continue
-
-                if active_flag == 0:
-                    #no roles were active on day
-                    active.append(0)
-
-                day += timedelta(days=1)#increment day by one on each loop
-
-            try:
-                active_pct.append(100*sum(active)/len(active))
-                open_pct.append(len(active))# number of days between start and end date
-            except:
-                #If no items were appended to the lists
-                active_pct.append(0)
-                open_pct.append(0)
-
-        except:
-                #if incrementing the time delta failed (both nan?)
-                days.append(day)
-                active_pct.append(0)
-                open_pct.append(0)
-
-
-    dept_data['active_pct'] = active_pct
-    dept_data['open_pct'] = open_pct
-    print('success')
-
-    return dept_data
-
 def create_argument_parser():
     """
     Function to add command line arguments at run time
@@ -260,6 +175,142 @@ def aws_access():
     AWS_SECRET_ACCESS_KEY = os.getenv("aws_key")[1:-1]
     s3 = boto3.resource(service_name='s3',region_name='ca-central-1', aws_access_key_id=str(AWS_ACCESS_KEY_ID), aws_secret_access_key=str(AWS_SECRET_ACCESS_KEY))
     return s3
+
+def get_active_days(sample, active_pct, open_pct, p_days):
+    #create list of active days between portofolio start and end
+    sample = sample[['Start','End']]#only roles with unique start and end dates matter for looking at active days
+    sample.drop_duplicates(inplace=True)
+
+    #create list of all active days between associated roles
+    R_days = []
+    for s in range(len(sample)):
+        #get a role's start and end date
+        r_start = sample.iloc[s,0]
+        r_end = sample.iloc[s,1]
+
+        #get number of days between start and end date of portoflio recorded roles
+        try:
+            delta = r_start - r_end
+            delta = -int(delta.days)
+
+        except:
+            #if the portfolio is active consider end date as today
+            delta = r_start.date() - date.today()
+            delta = -int(delta.days)
+
+        day = r_start
+        r_days = []
+        #append each day from role start to end-date
+        for i in range(delta):
+            day += timedelta(days=1)
+            r_days.append(day.strftime('%m/%d/%Y'))
+        #add to bigger list
+        R_days = R_days + r_days
+    #get only unique days
+    R_days = list(set(R_days))
+
+    try:
+        active_pct.append(100*len(R_days)/len(p_days))
+        open_pct.append(len(p_days))
+    except:
+        #If no items were appended to the lists
+        active_pct.append(0)
+        open_pct.append(0)
+    return active_pct, open_pct
+
+def get_active_role(sample, role_pct, p_days, roles):
+    #create list of active days between portofolio start and end
+    sample = sample[['Start', 'End', 'Role']]#only roles with unique start and end dates matter for looking at active days
+    sample.drop_duplicates(inplace=True)
+
+    #create list of all active days between associated roles
+
+    for role in roles:
+        smple = sample[ sample['Role'] == role ]
+        R_days = []
+        for s in range(len(smple)):
+            #get a role's start and end date
+            r_start = smple.iloc[s,0]
+            r_end = smple.iloc[s,1]
+
+            #get number of days between start and end date of portoflio recorded roles
+            try:
+                delta = r_start - r_end
+                delta = -int(delta.days)
+
+            except:
+                #if the portfolio is active consider end date as today
+                delta = r_start.date() - date.today()
+                delta = -int(delta.days)
+
+            day = r_start
+            r_days = []
+            #append each day from role start to end-date
+            for i in range(delta):
+                day += timedelta(days=1)
+                r_days.append(day.strftime('%m/%d/%Y'))
+            #add to bigger list
+            R_days = R_days + r_days
+
+        #get only unique days from list
+        R_days = list(set(R_days))
+
+        try:
+            role_pct[role].append(100*len(R_days)/len(p_days))
+
+        except:
+            #If no items were appended to the lists
+            role_pct[role].append(0)
+
+    return role_pct
+
+def get_port_stats(data,dept_data):
+    """
+    Function to return dataframe of portfolio stats
+    Accepts
+        dept_data: a table of unique portofolio department links with start and end date
+        data: a table of all role sittings with associated portfolios and department
+    """
+
+    active_pct, open_pct = [], []
+    role_pct = {}
+    roles = list(data['Role'].unique())
+    for role in roles:
+        role_pct[role] = []
+    #get stats for each unique portfolio
+    for row in range(len(dept_data)):
+        #look at all sittings associated to each unique department-portoflio link (each row in dept_data)
+        sample = data[ ( data['Portfolio'] == dept_data.iloc[row,1] ) & ( data['Dept'] == dept_data.iloc[row,2])]
+
+        #get the portfolio start and end date and days between
+        p_start = dept_data.iloc[row,3].date()
+        p_end = dept_data.iloc[row,4].date()
+
+        #get number of days between start and end date of portoflio recorded roles
+        try:
+            delta = p_start - p_end
+            delta = -int(delta.days)
+        except:
+            #if the protfolio is active consider end date as today
+            delta = p_start - date.today()
+            delta = -int(delta.days)
+
+        #create a list of all dates between start and end date
+        day = p_start
+        p_days = []
+        for i in range(delta):
+            p_days.append(day.strftime('%m/%d/%Y'))
+            day += timedelta(days=1)
+
+        active_pct, open_pct = get_active_days(sample, active_pct, open_pct, p_days) #get days portfolio was held by roles
+        role_pct = get_active_role(sample, role_pct, p_days, roles)#get pct portfolio was held by each role
+
+    dept_data['active_pct'] = active_pct
+    dept_data['days_since_inception'] = open_pct
+    for role in roles:
+        dept_data[role] = role_pct[role]
+
+    return dept_data
 
 if __name__ == "__main__":
     parser  = create_argument_parser()
@@ -288,79 +339,10 @@ if __name__ == "__main__":
         s3.Object('polemics', 'processed/portfolio_dept_tbl2.csv').put(Body=data.to_csv())
 
         file_obj = s3.Bucket('polemics').Object("processed/portfolio_dept_tbl2.csv").get()
-        data = pd.read_csv(io.BytesIO(file_obj['Body'].read()),parse_dates=['start','end'])
+        data = pd.read_csv(io.BytesIO(file_obj['Body'].read()),parse_dates=['Start','End'])
+        data = data[data['Start'].notna()]
         dept_data = get_dept_links(data)
-        active_pct, open_pct = [], []
-        #look at all sittings associated to each unique department-portoflio link (each row in dept_data)
-        for row in range(len(dept_data)):
-
-            sample = data[ ( data['Portfolio'] == dept_data.iloc[row,1] ) & ( data['Dept'] == dept_data.iloc[row,2])]
-            #get the portfolio start and end date and days between
-            p_start = dept_data.iloc[row,3].date()
-            p_end = dept_data.iloc[row,4].date()
-        #     print("--Portfolio: ",dept_data.iloc[row,1],'start: ',p_start.strftime('%m/%d/%Y'))
-            today = date.today()
-            #get number of days between start and end date of portoflio recorded roles
-            try:
-                delta = p_start - p_end
-                delta = delta.days
-                delta = -int(delta)
-            except:
-                #if the protfolio is active consider end date as today
-                delta = p_start - today
-                delta = delta.days
-                delta = -int(delta)
-
-            p_duration = delta
-
-            #create a list of all dates between start and end date
-            day = p_start
-            p_days = []
-            for i in range(p_duration):
-                day += timedelta(days=1)
-                p_days.append(day.strftime('%m/%d/%Y'))
-
-            #create list of active days between portofolio start and end
-            sample = sample[['Start','End']]
-            sample.drop_duplicates(inplace=True)
-            R_days = []
-            for s in range(len(sample)):
-                #get a role's start and end date
-                r_start = sample.iloc[s,0]
-                r_end = sample.iloc[s,1]
-                #get number of days between start and end date of portoflio recorded roles
-                try:
-                    delta = r_start - r_end
-                    delta = delta.days
-                    delta = -int(delta)
-
-                except:
-                    #if the portfolio is active consider end date as today
-                    delta = r_start.date() - today
-                    delta = delta.days
-                    delta = -int(delta)
-
-                day = r_start
-                r_days = []
-                for i in range(delta):
-                    day += timedelta(days=1)
-                    r_days.append(day.strftime('%m/%d/%Y'))
-
-                R_days = R_days + r_days
-
-            R_days = list(set(R_days))
-
-            try:
-                active_pct.append(100*len(R_days)/len(p_days))
-                open_pct.append(len(p_days))
-            except:
-                #If no items were appended to the lists
-                active_pct.append(0)
-                open_pct.append(0)
-
-
-        dept_data['active_pct'] = active_pct
-        dept_data['time_since_start'] = open_pct
+        dept_data = get_port_stats(data, dept_data)
         # print("successfully saved table")
         s3.Object('polemics', 'processed/portfolio_final_tbl.csv').put(Body=dept_data.to_csv())
         # data.to_csv('processed/portfolio_sittings_tbl2.csv')
